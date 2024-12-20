@@ -1,5 +1,6 @@
 from tqdm.auto import tqdm  # for progress bar
 import os
+from dotenv import load_dotenv
 import time
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import ChatOpenAI
@@ -8,11 +9,16 @@ from langchain.schema import (
     HumanMessage,
     AIMessage
 )
-from langchain.document_loaders import DirectoryLoader
+from langchain_community.document_loaders import DirectoryLoader
 from datasets import load_dataset
 from pinecone import Pinecone, ServerlessSpec
 from langchain_openai import OpenAIEmbeddings
-from langchain.vectorstores import Pinecone as PineconeStore
+from langchain_community.vectorstores import Pinecone as PineconeStore
+
+# ask question
+question = "Based on recent research on telomere shortening, what practical applications can be derived from the observed association between early childhood stress and telomere length, and how might this information influence public health strategies?" 
+
+load_dotenv()
 
 # initialize connection to pinecone (get API key at app.pinecone.io)
 api_key = os.getenv("PINECONE_API_KEY")
@@ -71,28 +77,31 @@ if index_name not in existing_indexes:
 # connect to index
 index = pc.Index(index_name)
 time.sleep(1)
-# view index stats
 
+# view index stats
 embed_model = OpenAIEmbeddings(model="text-embedding-ada-002")
 
 batch_size = 50
 
-for i in tqdm(range(0, len(data), batch_size)):
-    i_end = min(len(data), i+batch_size)
-    # get batch of data
-    batch = data[i:i_end]
-    # generate unique ids for each chunk
-    ids = [f"doc-{i + j}" for j, _ in enumerate(batch)]
-    # get text to embed
-    texts = [f"{x.page_content}" for i, x in enumerate(batch)]
-    # embed text
-    embeds = embed_model.embed_documents(texts)
-    # get metadata to store in Pinecone
-    metadata = [
-        {'text': x.page_content } for i, x in enumerate(batch)
-    ]
-    # add to Pinecone
-    index.upsert(vectors=zip(ids, embeds, metadata))
+# check if the index already contains embeddings for the data
+index_stats = index.describe_index_stats()
+if index_stats['total_vector_count'] < len(data):
+    for i in tqdm(range(0, len(data), batch_size)):
+        i_end = min(len(data), i+batch_size)
+        # get batch of data
+        batch = data[i:i_end]
+        # generate unique ids for each chunk
+        ids = [f"doc-{i + j}" for j, _ in enumerate(batch)]
+        # get text to embed
+        texts = [f"{x.page_content}" for i, x in enumerate(batch)]
+        # embed text
+        embeds = embed_model.embed_documents(texts)
+        # get metadata to store in Pinecone
+        metadata = [
+            {'text': x.page_content } for i, x in enumerate(batch)
+        ]
+        # add to Pinecone
+        index.upsert(vectors=zip(ids, embeds, metadata))
 
 text_field = "text"  # the metadata field that contains our text
 
@@ -113,13 +122,12 @@ def augment_prompt(query: str):
     {source_knowledge}
 
     Query: {query}"""
+    print(augmented_prompt)
     return augmented_prompt
-
-query = "" # add query 
 
 # create a new user prompt
 prompt = HumanMessage(
-    content=augment_prompt(query)
+    content=augment_prompt(question)
 )
 # add to messages
 messages.append(prompt)

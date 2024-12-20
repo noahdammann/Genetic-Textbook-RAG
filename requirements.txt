@@ -1,0 +1,7 @@
+datasets==2.19.0
+langchain==0.3.13
+langchain_community==0.3.13
+langchain_openai==0.2.14
+pinecone==5.4.2
+python-dotenv==1.0.1
+tqdm==4.66.2
